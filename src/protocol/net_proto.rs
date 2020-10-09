@@ -13,7 +13,7 @@ pub struct TcpEstablish {
     pub dest: SocketAddr,
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Listen {
     Tcp(SocketAddr),
 }

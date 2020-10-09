@@ -2,7 +2,7 @@ pub use self::client::CliListen;
 use crate::error::err_exit;
 use crate::protocol::net_proto::Establish;
 pub use crate::protocol::net_proto::Listen;
-use crate::protocol::ClientId;
+pub use crate::protocol::ClientId;
 use crate::protocol::Protocol;
 use async_std::net::TcpStream;
 use async_std::sync::Arc;
@@ -39,6 +39,7 @@ impl Server {
     }
 
     pub async fn run(self) {
+        let mut join = vec![];
         // Clients Listen
         for listen in self.cli_listen {
             let cli = self.client.clone();
@@ -47,9 +48,9 @@ impl Server {
                 match listen {
                     CliListen::Tcp(socket) => client::tcp(socket, cli, reqmap).await,
                 }
-                .unwrap_or_else(|e| err_exit(1, e))
+                .unwrap_or_else(|e| err_exit(1, e));
             };
-            task::spawn(task);
+            join.push(task::spawn(task));
         }
         // Visitors Listen
         for (listen, id) in self.listen {
@@ -59,9 +60,12 @@ impl Server {
                 match listen {
                     Listen::Tcp(socket) => visitor::tcp(socket, id, climap, reqmap).await,
                 }
-                .unwrap_or_else(|e| err_exit(2, e))
+                .unwrap_or_else(|e| err_exit(2, e));
             };
-            task::spawn(task);
+            join.push(task::spawn(task));
+        }
+        for handle in join {
+            handle.await;
         }
     }
 }
