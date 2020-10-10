@@ -2,11 +2,11 @@ use self::config::CONFIG;
 use self::error::err_exit;
 use anyhow::anyhow;
 use anyhow::Result;
+use daemonize::Daemonize;
 use shadow_peer::server::CliListen;
 use shadow_peer::server::ClientId;
 use shadow_peer::server::Listen;
 use shadow_peer::server::Server;
-use daemonize::Daemonize;
 
 mod config;
 mod error;

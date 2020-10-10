@@ -2,10 +2,10 @@ use self::config::CONFIG;
 use self::error::err_exit;
 use anyhow::anyhow;
 use anyhow::Result;
+use daemonize::Daemonize;
 use shadow_peer::client::Client;
 use shadow_peer::client::ClientId;
 use std::net::SocketAddr;
-use daemonize::Daemonize;
 
 mod config;
 mod error;

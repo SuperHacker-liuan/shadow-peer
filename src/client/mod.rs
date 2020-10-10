@@ -12,6 +12,7 @@ use async_std::net::TcpStream;
 use async_std::task;
 use futures::FutureExt;
 use futures_timer::Delay;
+use log::warn;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -39,7 +40,7 @@ impl Client {
     pub async fn run(mut self) {
         loop {
             if let Err(e) = self.run_impl().await {
-                eprintln!("{}", e);
+                warn!(target: "shadow-peer", "{}", e);
                 Delay::new(Duration::from_secs(3)).await;
             }
         }

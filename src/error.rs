@@ -1,3 +1,4 @@
+use log::error;
 use std::fmt::Display;
 use thiserror::Error;
 
@@ -23,6 +24,6 @@ pub enum ShadowPeerError {
 }
 
 pub(crate) fn err_exit<S: Display>(code: i32, e: S) -> ! {
-    eprintln!("{}", e);
+    error!(target: "shadow-peer", "{}", e);
     std::process::exit(code)
 }

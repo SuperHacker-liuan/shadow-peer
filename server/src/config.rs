@@ -58,7 +58,7 @@ fn command_config() -> App<'static, 'static> {
                 .help("Start in daemon mode")
                 .takes_value(false)
                 .multiple(false)
-                .required(false)
+                .required(false),
         )
         .arg(
             Arg::with_name("dump config")
@@ -100,10 +100,7 @@ fn parse_config_impl() -> Result<Config> {
     };
     let daemon = matches.is_present("daemon");
 
-    Ok(Config {
-        daemon,
-        conf,
-    })
+    Ok(Config { daemon, conf })
 }
 
 const SAMPLE: &str = r#"[[client]]
