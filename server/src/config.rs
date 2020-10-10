@@ -8,9 +8,11 @@ use serde::Deserialize;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::Read;
+use std::path::PathBuf;
 
 pub struct Config {
     pub daemon: bool,
+    pub log: Option<PathBuf>,
     pub conf: Conf,
 }
 
@@ -69,6 +71,16 @@ fn command_config() -> App<'static, 'static> {
                 .multiple(false)
                 .required(false),
         )
+        .arg(
+            Arg::with_name("log")
+                .short("l")
+                .long("log")
+                .value_name("LOG_PATH")
+                .help("Log errors to LOG_PATH")
+                .takes_value(true)
+                .multiple(false)
+                .required(false),
+        )
         .group(
             ArgGroup::with_name("config group")
                 .args(&["config", "dump config"])
@@ -98,9 +110,11 @@ fn parse_config_impl() -> Result<Config> {
     } else {
         toml::from_str(SAMPLE)?
     };
-    let daemon = matches.is_present("daemon");
 
-    Ok(Config { daemon, conf })
+    let daemon = matches.is_present("daemon");
+    let log = matches.value_of("log").map(PathBuf::from);
+
+    Ok(Config { daemon, log, conf })
 }
 
 const SAMPLE: &str = r#"[[client]]

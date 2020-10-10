@@ -9,12 +9,14 @@ use std::net::SocketAddr;
 
 mod config;
 mod error;
+mod log;
 
 #[async_std::main]
 async fn main() -> Result<()> {
     let server = parse_server()?;
     let client_id = ClientId::from(&CONFIG.conf.server.client);
     let port_map = CONFIG.conf.portmap.iter().map(port_map_mapper).collect();
+    log::init_logger();
     daemonize();
     Client::new(server, client_id, port_map).run().await;
     Ok(())
