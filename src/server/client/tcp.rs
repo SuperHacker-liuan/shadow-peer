@@ -22,6 +22,7 @@ use async_std::sync::Receiver;
 use async_std::task;
 use futures::FutureExt;
 use futures_timer::Delay;
+use std::collections::HashSet;
 use std::io;
 use std::net::SocketAddr;
 use std::result::Result as StdResult;
@@ -29,18 +30,24 @@ use std::time::Duration;
 
 struct StreamShare {
     cli: ClientMap,
+    idset: Arc<HashSet<ClientId>>,
     req: ReqMap,
 }
 
-pub(in crate::server) async fn tcp(socket: SocketAddr, cli: ClientMap, req: ReqMap) -> Result<()> {
+pub(in crate::server) async fn tcp(
+    socket: SocketAddr,
+    cli: ClientMap,
+    req: ReqMap,
+    idset: Arc<HashSet<ClientId>>,
+) -> Result<()> {
     let port = socket.port() as u32;
     let tcp = TcpListener::bind(socket).await?;
     let mut tcp = tcp.incoming();
-    let share = Arc::new(StreamShare { cli, req });
+    let share = Arc::new(StreamShare { cli, idset, req });
     while let Some(stream) = tcp.next().await {
         let share = share.clone();
         task::spawn(async move {
-            match init(&share.cli, stream).await {
+            match init(&share, stream).await {
                 Some(ConnInit::Control(tcp, recv)) => controller(tcp, recv).await,
                 Some(ConnInit::Worker(tcp, est)) => worker(tcp, est, &share.req).await,
                 None => {}
@@ -60,18 +67,21 @@ enum ConnInit {
     Worker(TcpStream, Establish),
 }
 
-async fn init(map: &ClientMap, stream: StdResult<TcpStream, io::Error>) -> Option<ConnInit> {
+async fn init(share: &StreamShare, stream: StdResult<TcpStream, io::Error>) -> Option<ConnInit> {
     let mut stream = stream.ok()?;
     let r = match read_protocol_timeout(&mut stream).await.ok()? {
         Protocol::ClientId(id) => {
             let id = ClientId::from(id);
+            if !share.idset.contains(&id) {
+                return None;
+            }
             let (send, recv) = sync::channel(100);
             let client = Client { estab_sender: send };
             let controller = Controller {
                 stream,
                 last_recv: current_time16(),
             };
-            map.write().await.insert(id.clone(), client);
+            share.cli.write().await.insert(id.clone(), client);
             ConnInit::Control(controller, recv)
         }
         Protocol::Establish(est) => ConnInit::Worker(stream, est),

@@ -12,6 +12,7 @@ use async_std::sync::RwLock;
 use async_std::sync::Sender;
 use async_std::task;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 mod client;
 mod visitor;
@@ -25,16 +26,19 @@ pub struct Server {
     client: ClientMap,
     listen: HashMap<Listen, ClientId>,
     request: ReqMap,
+    valid_client: Arc<HashSet<ClientId>>,
 }
 
 impl Server {
     pub fn new(listen: Vec<(Listen, ClientId)>, cli_listen: Vec<CliListen>) -> Server {
+        let valid_client = Arc::new(listen.iter().map(|(_, id)| id.clone()).collect());
         let listen = listen.into_iter().collect();
         Server {
             cli_listen,
             client: Arc::new(RwLock::new(HashMap::new())),
             listen,
             request: Arc::new(Mutex::new(HashMap::new())),
+            valid_client,
         }
     }
 
@@ -44,14 +48,16 @@ impl Server {
         for listen in self.cli_listen {
             let cli = self.client.clone();
             let reqmap = self.request.clone();
+            let idset = self.valid_client.clone();
             let task = async move {
                 match listen {
-                    CliListen::Tcp(socket) => client::tcp(socket, cli, reqmap).await,
+                    CliListen::Tcp(socket) => client::tcp(socket, cli, reqmap, idset).await,
                 }
                 .unwrap_or_else(|e| err_exit(1, e));
             };
             join.push(task::spawn(task));
         }
+
         // Visitors Listen
         for (listen, id) in self.listen {
             let climap = self.client.clone();
