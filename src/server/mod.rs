@@ -17,7 +17,7 @@ mod client;
 mod visitor;
 
 pub(self) type ClientMap = Arc<RwLock<HashMap<ClientId, Client>>>;
-type ReqMap = Arc<RwLock<HashMap<Establish, ReqStat>>>;
+type ReqMap = Arc<Mutex<HashMap<Establish, ReqStat>>>;
 type ReqCond = Arc<(Mutex<Option<TcpStream>>, Condvar)>;
 
 pub struct Server {
@@ -34,7 +34,7 @@ impl Server {
             cli_listen,
             client: Arc::new(RwLock::new(HashMap::new())),
             listen,
-            request: Arc::new(RwLock::new(HashMap::new())),
+            request: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 

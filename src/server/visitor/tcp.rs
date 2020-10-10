@@ -86,5 +86,5 @@ async fn tcp_stream(stream: TcpStream, id: ClientId, cli: &ClientMap, req: &ReqM
 
 async fn register_on_reqmap(req: &ReqMap, est: Establish, cond: ReqCond) {
     let stat = ReqStat::Syn(cond);
-    req.write().await.insert(est, stat);
+    req.lock().await.insert(est, stat);
 }

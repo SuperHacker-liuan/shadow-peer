@@ -133,7 +133,7 @@ fn handle_recv(c: &mut Controller, proto: Protocol) -> bool {
 }
 
 async fn worker(stream: TcpStream, est: Establish, req: &ReqMap) {
-    let mut map = req.write().await;
+    let mut map = req.lock().await;
     let stat = match map.remove(&est) {
         Some(ReqStat::Syn(stat)) => stat,
         None => return,
