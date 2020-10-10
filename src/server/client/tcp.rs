@@ -48,7 +48,10 @@ pub(in crate::server) async fn tcp(
         let share = share.clone();
         task::spawn(async move {
             match init(&share, stream).await {
-                Some(ConnInit::Control(tcp, recv)) => controller(tcp, recv).await,
+                Some(ConnInit::Control(tcp, recv, id)) => {
+                    controller(tcp, recv).await;
+                    share.cli.write().await.remove(&id);
+                }
                 Some(ConnInit::Worker(tcp, est)) => worker(tcp, est, &share.req).await,
                 None => {}
             };
@@ -63,7 +66,7 @@ struct Controller {
 }
 
 enum ConnInit {
-    Control(Controller, Receiver<Protocol>),
+    Control(Controller, Receiver<Protocol>, ClientId),
     Worker(TcpStream, Establish),
 }
 
@@ -82,7 +85,7 @@ async fn init(share: &StreamShare, stream: StdResult<TcpStream, io::Error>) -> O
                 last_recv: current_time16(),
             };
             share.cli.write().await.insert(id.clone(), client);
-            ConnInit::Control(controller, recv)
+            ConnInit::Control(controller, recv, id)
         }
         Protocol::Establish(est) => ConnInit::Worker(stream, est),
         _ => return None,
@@ -118,7 +121,6 @@ async fn controller(mut c: Controller, recv: Receiver<Protocol>) {
                 let stream = c.stream.clone();
                 recv_fut = Box::pin(read_wrap(stream).fuse());
                 timeout = Delay::new(Duration::from_secs(PING_TMOUT * 2)).fuse();
-
             },
             _ = ping_timer => {
                 let proto = Protocol::Ping(current_time16());
