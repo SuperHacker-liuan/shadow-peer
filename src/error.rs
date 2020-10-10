@@ -8,15 +8,15 @@ type TimeoutError = async_std::future::TimeoutError;
 
 #[derive(Debug, Error)]
 pub enum ShadowPeerError {
-    #[error("io")]
+    #[error("io: {0}")]
     Io(#[from] std::io::Error),
-    #[error("invalid operation")]
+    #[error("invalid operation: {0}")]
     InvalidOperation(String),
     #[error("Unexpect listen fail on {0} port {1}")]
     ListenFail(&'static str, u32),
-    #[error("serde json")]
+    #[error("serde json: {0}")]
     SerdeJson(#[from] serde_json::Error),
-    #[error("timeout")]
+    #[error("timeout: {0}")]
     Timeout(#[from] TimeoutError),
     #[error("unsupported version {0}")]
     UnsupportedVersion(u8),

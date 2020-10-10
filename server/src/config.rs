@@ -1,5 +1,5 @@
 use crate::error::err_exit;
-use anyhow::Error;
+use anyhow::Result;
 use clap::App;
 use clap::Arg;
 use clap::ArgGroup;
@@ -55,7 +55,7 @@ fn command_config() -> App<'static, 'static> {
             Arg::with_name("dump config")
                 .short("d")
                 .long("dump-config")
-                .help("Provide a running config to PATH")
+                .help("Provide a default sample config")
                 .takes_value(false)
                 .multiple(false)
                 .required(false),
@@ -63,8 +63,7 @@ fn command_config() -> App<'static, 'static> {
         .group(
             ArgGroup::with_name("config group")
                 .args(&["config", "dump config"])
-                .multiple(false)
-                .required(true),
+                .multiple(false),
         )
 }
 
@@ -75,7 +74,7 @@ fn parse_config() -> Config {
     }
 }
 
-fn parse_config_impl() -> Result<Config, Error> {
+fn parse_config_impl() -> Result<Config> {
     let matches = command_config().get_matches();
 
     if matches.is_present("dump config") {
@@ -88,7 +87,7 @@ fn parse_config_impl() -> Result<Config, Error> {
         conf.read_to_string(&mut content)?;
         toml::from_str(&content)?
     } else {
-        err_exit(1, "Conf file not given");
+        toml::from_str(SAMPLE)?
     };
     Ok(Config {
         daemon: false,
@@ -103,6 +102,11 @@ listen = "[::]:32767"
 [[listen]]
 proto = "tcp"
 listen = "[::]:8000"
+client = "BITCOINCASH:QPZNZ089TQKAVWF6XM6SD8KPGM59FF5H6CKV0585EP"
+
+[[listen]]
+proto = "tcp"
+listen = "[::]:8443"
 client = "BITCOINCASH:QPZNZ089TQKAVWF6XM6SD8KPGM59FF5H6CKV0585EP"
 
 # Save this as an .toml file."#;
