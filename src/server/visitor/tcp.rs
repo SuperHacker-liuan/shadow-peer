@@ -19,6 +19,7 @@ use async_std::sync::Mutex;
 use async_std::task;
 use futures::future::FutureExt;
 use std::net::SocketAddr;
+use std::time::Duration;
 
 pub(in crate::server) async fn tcp(
     listen: SocketAddr,
@@ -46,6 +47,7 @@ async fn tcp_stream(stream: TcpStream, id: ClientId, cli: &ClientMap, req: &ReqM
     let establish = Establish::Tcp(establish);
     let cli = cli.clone();
     let req = req.clone();
+    const TMOUT: u64 = 10;
 
     task::spawn(async move {
         let resp = match { cli.read().await.get(&id) } {
@@ -59,23 +61,24 @@ async fn tcp_stream(stream: TcpStream, id: ClientId, cli: &ClientMap, req: &ReqM
             None => return,
         };
 
-        let (vr, vw) = &mut (&stream, &stream);
+        // Wait for client connection
         let (lock, cvar) = &*resp;
-        let mut cli_stream = lock.lock().await;
-        loop {
-            cli_stream = cvar.wait(cli_stream).await; //TODO should timeout
-            let cli_stream = match *cli_stream {
-                Some(ref cli_stream) => cli_stream,
-                None => continue,
-            };
-            let (cr, cw) = &mut (cli_stream, cli_stream);
-            let cp1 = io::copy(vr, cw);
-            let cp2 = io::copy(cr, vw);
-            let _ = futures::select! {
-                r1 = cp1.fuse() => r1,
-                r2 = cp2.fuse() => r2,
-            };
-            break;
+        let lock = lock.lock().await;
+        let timeout = Duration::from_secs(TMOUT);
+        let (cli_stream, _timeout) = cvar
+            .wait_timeout_until(lock, timeout, |cs| cs.is_some())
+            .await;
+        let cli_stream = match *cli_stream {
+            Some(ref cli_stream) => cli_stream,
+            None => return,
+        };
+
+        // Sync
+        let (vr, vw) = &mut (&stream, &stream);
+        let (cr, cw) = &mut (cli_stream, cli_stream);
+        futures::select! {
+            _ = io::copy(vr, cw).fuse() => {}
+            _ = io::copy(cr, vw).fuse() => {}
         }
     });
     Ok(())
