@@ -11,8 +11,10 @@ use async_std::io;
 use async_std::net::TcpStream;
 use async_std::task;
 use futures::FutureExt;
+use futures_timer::Delay;
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::time::Duration;
 
 pub struct Client {
     client_id: ClientId,
@@ -38,11 +40,12 @@ impl Client {
         loop {
             if let Err(e) = self.run_impl().await {
                 eprintln!("{}", e);
+                Delay::new(Duration::from_secs(3)).await;
             }
         }
     }
 
-    pub async fn run_impl(&mut self) -> Result<()> {
+    async fn run_impl(&mut self) -> Result<()> {
         let mut ctrl = TcpStream::connect(self.server).await?;
         let ctrl = &mut ctrl;
         let hello = Protocol::ClientId(self.client_id.clone());

@@ -608,8 +608,11 @@ dependencies = [
 name = "shadow-peer-client"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-std",
  "clap",
+ "once_cell",
+ "serde",
  "shadow-peer",
  "toml",
 ]
