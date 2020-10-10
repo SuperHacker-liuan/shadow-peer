@@ -75,7 +75,7 @@ async fn init(share: &StreamShare, stream: StdResult<TcpStream, io::Error>) -> O
             if !share.idset.contains(&id) {
                 return None;
             }
-            let (send, recv) = sync::channel(100);
+            let (send, recv) = sync::channel(1000);
             let client = Client { estab_sender: send };
             let controller = Controller {
                 stream,
