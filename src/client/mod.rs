@@ -47,12 +47,14 @@ impl Client {
     }
 
     async fn run_impl(&mut self) -> Result<()> {
-        let mut ctrl = TcpStream::connect(self.server).await?;
+        let ctrl = TcpStream::connect(self.server);
+        let mut ctrl = io::timeout(tmout(), ctrl).await?;
         let ctrl = &mut ctrl;
         let hello = Protocol::ClientId(self.client_id.clone());
         write_wrap(ctrl, &hello).await?;
         loop {
-            match read_protocol(ctrl).await? {
+            let proto = async_std::future::timeout(tmout(), read_protocol(ctrl));
+            match proto.await?? {
                 Protocol::Ping(ts) => write_wrap(ctrl, &Protocol::Ping(ts)).await?,
                 Protocol::Establish(Establish::Tcp(est)) => {
                     let dest = match self.port_map.get(&est.dest.port()) {
@@ -89,4 +91,8 @@ async fn worker_impl(server: SocketAddr, dest: SocketAddr, est: TcpEstablish) ->
 
 async fn write_wrap(s: &mut TcpStream, proto: &Protocol) -> Result<()> {
     write_protocol(s, CURRENT_VERSION, proto).await
+}
+
+fn tmout() -> Duration {
+    Duration::from_secs(10)
 }
