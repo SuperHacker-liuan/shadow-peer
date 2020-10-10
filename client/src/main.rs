@@ -2,6 +2,7 @@ use self::config::CONFIG;
 use self::error::err_exit;
 use anyhow::anyhow;
 use anyhow::Result;
+use async_std::task;
 use daemonize::Daemonize;
 use shadow_peer::client::Client;
 use shadow_peer::client::ClientId;
@@ -11,14 +12,13 @@ mod config;
 mod error;
 mod log;
 
-#[async_std::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let server = parse_server()?;
     let client_id = ClientId::from(&CONFIG.conf.server.client);
     let port_map = CONFIG.conf.portmap.iter().map(port_map_mapper).collect();
     log::init_logger();
     daemonize();
-    Client::new(server, client_id, port_map).run().await;
+    task::block_on(Client::new(server, client_id, port_map).run());
     Ok(())
 }
 

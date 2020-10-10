@@ -2,6 +2,7 @@ use self::config::CONFIG;
 use self::error::err_exit;
 use anyhow::anyhow;
 use anyhow::Result;
+use async_std::task;
 use daemonize::Daemonize;
 use shadow_peer::server::CliListen;
 use shadow_peer::server::ClientId;
@@ -12,13 +13,12 @@ mod config;
 mod error;
 mod log;
 
-#[async_std::main]
-async fn main() {
+fn main() {
     let listen = CONFIG.conf.listen.iter().map(listen_mapper).collect();
     let cli = CONFIG.conf.client.iter().map(cli_mapper).collect();
     log::init_logger();
     daemonize();
-    Server::new(listen, cli).run().await
+    task::block_on(Server::new(listen, cli).run())
 }
 
 fn daemonize() {
