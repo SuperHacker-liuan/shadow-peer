@@ -52,8 +52,17 @@ fn command_config() -> App<'static, 'static> {
                 .required(false),
         )
         .arg(
-            Arg::with_name("dump config")
+            Arg::with_name("daemon")
                 .short("d")
+                .long("daemon")
+                .help("Start in daemon mode")
+                .takes_value(false)
+                .multiple(false)
+                .required(false)
+        )
+        .arg(
+            Arg::with_name("dump config")
+                .short("D")
                 .long("dump-config")
                 .help("Provide a default sample config")
                 .takes_value(false)
@@ -89,8 +98,10 @@ fn parse_config_impl() -> Result<Config> {
     } else {
         toml::from_str(SAMPLE)?
     };
+    let daemon = matches.is_present("daemon");
+
     Ok(Config {
-        daemon: false,
+        daemon,
         conf,
     })
 }

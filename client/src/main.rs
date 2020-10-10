@@ -5,6 +5,7 @@ use anyhow::Result;
 use shadow_peer::client::Client;
 use shadow_peer::client::ClientId;
 use std::net::SocketAddr;
+use daemonize::Daemonize;
 
 mod config;
 mod error;
@@ -14,8 +15,21 @@ async fn main() -> Result<()> {
     let server = parse_server()?;
     let client_id = ClientId::from(&CONFIG.conf.server.client);
     let port_map = CONFIG.conf.portmap.iter().map(port_map_mapper).collect();
+    daemonize();
     Client::new(server, client_id, port_map).run().await;
     Ok(())
+}
+
+fn daemonize() {
+    if !CONFIG.daemon {
+        return;
+    }
+    Daemonize::new()
+        .pid_file(format!("/tmp/shadow-peer-client.pid"))
+        .working_directory("/tmp")
+        .umask(0o777)
+        .start()
+        .expect("Failed to start as daemon");
 }
 
 fn parse_server() -> Result<SocketAddr> {

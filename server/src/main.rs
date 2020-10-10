@@ -6,6 +6,7 @@ use shadow_peer::server::CliListen;
 use shadow_peer::server::ClientId;
 use shadow_peer::server::Listen;
 use shadow_peer::server::Server;
+use daemonize::Daemonize;
 
 mod config;
 mod error;
@@ -14,7 +15,20 @@ mod error;
 async fn main() {
     let listen = CONFIG.conf.listen.iter().map(listen_mapper).collect();
     let cli = CONFIG.conf.client.iter().map(cli_mapper).collect();
+    daemonize();
     Server::new(listen, cli).run().await
+}
+
+fn daemonize() {
+    if !CONFIG.daemon {
+        return;
+    }
+    Daemonize::new()
+        .pid_file(format!("/tmp/shadow-peer-server.pid"))
+        .working_directory("/tmp")
+        .umask(0o777)
+        .start()
+        .expect("Failed to start as daemon");
 }
 
 fn cli_mapper(c: &config::Client) -> CliListen {
