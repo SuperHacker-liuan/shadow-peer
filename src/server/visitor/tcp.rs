@@ -55,11 +55,8 @@ impl<'a> StreamWaitor<'a> {
         let stat = ReqStat::Syn(send);
         let msg = ReqMapMessage::Set(stat);
         let protocol = Protocol::Establish(est.clone());
-        dbg!(1);
         req.unbounded_send((est.clone(), msg))?;
-        dbg!(2);
         cli.estab_sender.unbounded_send(protocol)?;
-        dbg!(3);
         Ok(StreamWaitor {
             req,
             establish: est,
