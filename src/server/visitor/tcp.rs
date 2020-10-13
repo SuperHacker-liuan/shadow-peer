@@ -1,8 +1,11 @@
+use super::Client;
 use super::ClientMap;
-use super::ReqMap;
+use super::ReqMapMessage;
+use super::ReqMapSender;
 use super::ReqStat;
 use crate::error::err_exit;
 use crate::error::Error;
+use crate::error::FastResult;
 use crate::error::Result;
 use crate::protocol::net_proto::Establish;
 use crate::protocol::net_proto::TcpEstablish;
@@ -15,7 +18,7 @@ use async_std::net::TcpStream;
 use async_std::stream::StreamExt;
 use async_std::task;
 use futures::channel::oneshot;
-use futures::channel::oneshot::Sender;
+use futures::channel::oneshot::Receiver;
 use futures::future::FutureExt;
 use log::warn;
 use std::net::SocketAddr;
@@ -25,7 +28,7 @@ pub(in crate::server) async fn tcp(
     listen: SocketAddr,
     id: ClientId,
     cli: ClientMap,
-    req: ReqMap,
+    req: ReqMapSender,
 ) -> Result<()> {
     let port = listen.port() as u32;
     let tcp = TcpListener::bind(listen).await?;
@@ -40,38 +43,83 @@ pub(in crate::server) async fn tcp(
     err_exit(65, Error::ListenFail("TCP", port))
 }
 
-async fn tcp_stream(stream: TcpStream, id: ClientId, cli: &ClientMap, req: &ReqMap) -> Result<()> {
+struct StreamWaitor<'a> {
+    req: &'a ReqMapSender,
+    establish: Establish,
+    recv: Option<Receiver<TcpStream>>,
+}
+
+impl<'a> StreamWaitor<'a> {
+    fn register(req: &'a ReqMapSender, est: Establish, cli: &Client) -> FastResult<Self> {
+        let (send, recv) = oneshot::channel();
+        let stat = ReqStat::Syn(send);
+        let msg = ReqMapMessage::Set(stat);
+        let protocol = Protocol::Establish(est.clone());
+        dbg!(1);
+        req.unbounded_send((est.clone(), msg))?;
+        dbg!(2);
+        cli.estab_sender.unbounded_send(protocol)?;
+        dbg!(3);
+        Ok(StreamWaitor {
+            req,
+            establish: est,
+            recv: Some(recv),
+        })
+    }
+
+    async fn recv(&mut self) -> Option<TcpStream> {
+        const TMOUT: u64 = 10;
+        let mut recv = None;
+        std::mem::swap(&mut recv, &mut self.recv);
+        let recv = match recv {
+            Some(r) => r,
+            None => return None,
+        };
+        match timeout(Duration::from_secs(TMOUT), recv).await {
+            Ok(Ok(stream)) => Some(stream),
+            _ => None, // Canceled / Timeout
+        }
+    }
+}
+
+impl<'a> Drop for StreamWaitor<'a> {
+    fn drop(&mut self) {
+        if let Some(_) = self.recv {
+            let msg = ReqMapMessage::Unset;
+            let _ = self.req.unbounded_send((self.establish.clone(), msg));
+        }
+    }
+}
+
+async fn tcp_stream(
+    stream: TcpStream,
+    id: ClientId,
+    cli: &ClientMap,
+    req: &ReqMapSender,
+) -> Result<()> {
     let src = stream.peer_addr()?;
     let dest = stream.local_addr()?;
     let establish = TcpEstablish { src, dest };
     let establish = Establish::Tcp(establish);
     let cli = cli.clone();
     let req = req.clone();
-    const TMOUT: u64 = 10;
 
     task::spawn(async move {
-        let (recv, est) = match { cli.read().await.get(&id) } {
-            Some(cli) => {
-                let (send, recv) = oneshot::channel();
-                let protocol = Protocol::Establish(establish.clone());
-                register_on_reqmap(&req, establish.clone(), send).await;
-                if let Err(e) = cli.estab_sender.unbounded_send(protocol) {
+        let mut sw = match { cli.read().await.get(&id) } {
+            Some(cli) => match StreamWaitor::register(&req, establish.clone(), cli) {
+                Ok(sw) => sw,
+                Err(e) => {
                     warn!(target: "shadow-peer", "{}", e);
-                };
-                (recv, establish)
-            }
+                    return;
+                }
+            },
             None => return,
         };
 
         // Wait for client connection
-        let cli_stream = match timeout(Duration::from_secs(TMOUT), recv).await {
-            Ok(Ok(stream)) => stream,
-            Ok(Err(_)) => return,
-            Err(_) => {
-                // Timeout
-                req.lock().await.remove(&est);
-                return;
-            }
+        let cli_stream = match sw.recv().await {
+            Some(s) => s,
+            None => return,
         };
 
         // Sync
@@ -83,9 +131,4 @@ async fn tcp_stream(stream: TcpStream, id: ClientId, cli: &ClientMap, req: &ReqM
         }
     });
     Ok(())
-}
-
-async fn register_on_reqmap(req: &ReqMap, est: Establish, send: Sender<TcpStream>) {
-    let stat = ReqStat::Syn(send);
-    req.lock().await.insert(est, stat);
 }

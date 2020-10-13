@@ -4,6 +4,7 @@ use thiserror::Error;
 
 pub type Error = ShadowPeerError;
 pub type Result<T> = std::result::Result<T, Error>;
+pub type FastResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 type TimeoutError = async_std::future::TimeoutError;
 

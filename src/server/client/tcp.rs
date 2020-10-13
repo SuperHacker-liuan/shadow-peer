@@ -1,6 +1,7 @@
 use super::Client;
 use super::ClientMap;
-use super::ReqMap;
+use super::ReqMapMessage;
+use super::ReqMapSender;
 use super::ReqStat;
 use crate::error::err_exit;
 use crate::error::Error;
@@ -19,6 +20,7 @@ use async_std::sync::Arc;
 use async_std::task;
 use futures::channel::mpsc;
 use futures::channel::mpsc::UnboundedReceiver;
+use futures::channel::oneshot;
 use futures::FutureExt;
 use futures_timer::Delay;
 use std::collections::HashSet;
@@ -30,13 +32,13 @@ use std::time::Duration;
 struct StreamShare {
     cli: ClientMap,
     idset: Arc<HashSet<ClientId>>,
-    req: ReqMap,
+    req: ReqMapSender,
 }
 
 pub(in crate::server) async fn tcp(
     socket: SocketAddr,
     cli: ClientMap,
-    req: ReqMap,
+    req: ReqMapSender,
     idset: Arc<HashSet<ClientId>>,
 ) -> Result<()> {
     let port = socket.port() as u32;
@@ -135,11 +137,15 @@ fn handle_recv(c: &mut Controller, proto: Protocol) -> bool {
     }
 }
 
-async fn worker(stream: TcpStream, est: Establish, req: &ReqMap) {
-    let mut map = req.lock().await;
-    let stat = match map.remove(&est) {
-        Some(ReqStat::Syn(stat)) => stat,
-        None => return,
+async fn worker(stream: TcpStream, est: Establish, req: &ReqMapSender) {
+    let (send, recv) = oneshot::channel();
+    let msg = ReqMapMessage::Take(send);
+    if let Err(_) = req.unbounded_send((est, msg)) {
+        return;
+    }
+    let stat = match recv.await {
+        Ok(Some(ReqStat::Syn(stat))) => stat,
+        _ => return,
     };
     let _ = stat.send(stream);
 }
