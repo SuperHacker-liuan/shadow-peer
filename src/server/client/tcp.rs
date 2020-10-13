@@ -6,7 +6,6 @@ use crate::error::err_exit;
 use crate::error::Error;
 use crate::error::Result;
 use crate::protocol::net_proto::Establish;
-use crate::protocol::read_protocol;
 use crate::protocol::read_protocol_timeout;
 use crate::protocol::write_protocol;
 use crate::protocol::ClientId;
@@ -72,7 +71,7 @@ enum ConnInit {
 
 async fn init(share: &StreamShare, stream: StdResult<TcpStream, io::Error>) -> Option<ConnInit> {
     let mut stream = stream.ok()?;
-    let r = match read_protocol_timeout(&mut stream).await.ok()? {
+    let r = match read_protocol_timeout(&mut stream, 10).await.ok()? {
         Protocol::ClientId(id) => {
             let id = ClientId::from(id);
             if !share.idset.contains(&id) {
@@ -98,7 +97,6 @@ async fn controller(mut c: Controller, recv: Receiver<Protocol>) {
     let mut send_fut = Box::pin(recv.recv().fuse());
     let mut recv_fut = Box::pin(read_wrap(c.stream.clone()).fuse());
     let mut ping_timer = Delay::new(Duration::from_secs(PING_TMOUT)).fuse();
-    let mut timeout = Delay::new(Duration::from_secs(PING_TMOUT * 2)).fuse();
     loop {
         futures::select! {
             send = send_fut => {
@@ -118,7 +116,6 @@ async fn controller(mut c: Controller, recv: Receiver<Protocol>) {
                 };
                 handle_recv(&mut c, proto);
                 recv_fut = Box::pin(read_wrap(c.stream.clone()).fuse());
-                timeout = Delay::new(Duration::from_secs(PING_TMOUT * 2)).fuse();
             },
             _ = ping_timer => {
                 let proto = Protocol::Ping(current_time16());
@@ -127,9 +124,6 @@ async fn controller(mut c: Controller, recv: Receiver<Protocol>) {
                 }
                 ping_timer = Delay::new(Duration::from_secs(PING_TMOUT)).fuse();
             },
-            _ = timeout => {
-                return;
-            }
         }
     }
 }
@@ -159,6 +153,5 @@ async fn write_wrap(s: &mut &TcpStream, proto: &Protocol) -> bool {
 }
 
 async fn read_wrap(s: Arc<TcpStream>) -> Result<Protocol> {
-    let mut s = &*s;
-    read_protocol(&mut s).await
+    read_protocol_timeout(&mut &*s, 10).await
 }

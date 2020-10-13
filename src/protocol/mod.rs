@@ -22,12 +22,11 @@ pub enum Protocol {
 
 pub const CURRENT_VERSION: u8 = 0;
 
-pub async fn read_protocol_timeout<R>(reader: &mut R) -> Result<Protocol>
+pub async fn read_protocol_timeout<R>(reader: &mut R, tmout: u64) -> Result<Protocol>
 where
     R: Read + Unpin,
 {
-    const TIMEOUT: u64 = 10;
-    let dur = Duration::from_secs(TIMEOUT);
+    let dur = Duration::from_secs(tmout);
     timeout(dur, async { read_protocol(reader).await }).await?
 }
 
