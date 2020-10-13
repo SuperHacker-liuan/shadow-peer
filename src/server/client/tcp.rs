@@ -15,10 +15,10 @@ use crate::utils::current_time16;
 use async_std::net::TcpListener;
 use async_std::net::TcpStream;
 use async_std::stream::StreamExt;
-use async_std::sync;
 use async_std::sync::Arc;
-use async_std::sync::Receiver;
 use async_std::task;
+use futures::channel::mpsc;
+use futures::channel::mpsc::UnboundedReceiver;
 use futures::FutureExt;
 use futures_timer::Delay;
 use std::collections::HashSet;
@@ -65,7 +65,7 @@ struct Controller {
 }
 
 enum ConnInit {
-    Control(Controller, Receiver<Protocol>, ClientId),
+    Control(Controller, UnboundedReceiver<Protocol>, ClientId),
     Worker(TcpStream, Establish),
 }
 
@@ -77,7 +77,7 @@ async fn init(share: &StreamShare, stream: StdResult<TcpStream, io::Error>) -> O
             if !share.idset.contains(&id) {
                 return None;
             }
-            let (send, recv) = sync::channel(1000);
+            let (send, recv) = mpsc::unbounded();
             let client = Client { estab_sender: send };
             let controller = Controller {
                 stream: Arc::new(stream),
@@ -92,22 +92,21 @@ async fn init(share: &StreamShare, stream: StdResult<TcpStream, io::Error>) -> O
     Some(r)
 }
 
-async fn controller(mut c: Controller, recv: Receiver<Protocol>) {
+async fn controller(mut c: Controller, mut recv: UnboundedReceiver<Protocol>) {
     const PING_TMOUT: u64 = 5;
-    let mut send_fut = Box::pin(recv.recv().fuse());
+    let mut send_fut = recv.next().fuse();
     let mut recv_fut = Box::pin(read_wrap(c.stream.clone()).fuse());
     let mut ping_timer = Delay::new(Duration::from_secs(PING_TMOUT)).fuse();
     loop {
         futures::select! {
             send = send_fut => {
                 let proto = match send {
-                    Ok(proto) => proto,
-                    Err(_) => return,
+                    Some(proto) => proto,
+                    None => return,
                 };
                 if !write_wrap(&mut &*c.stream, &proto).await {
                     return;
                 }
-                send_fut = Box::pin(recv.recv().fuse());
             },
             recv = recv_fut => {
                 let proto = match recv {

@@ -18,6 +18,7 @@ use async_std::sync::Condvar;
 use async_std::sync::Mutex;
 use async_std::task;
 use futures::future::FutureExt;
+use log::warn;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -55,7 +56,9 @@ async fn tcp_stream(stream: TcpStream, id: ClientId, cli: &ClientMap, req: &ReqM
                 let resp = Arc::new((Mutex::new(None), Condvar::new()));
                 let protocol = Protocol::Establish(establish.clone());
                 register_on_reqmap(&req, establish, resp.clone()).await;
-                cli.estab_sender.send(protocol).await;
+                if let Err(e) = cli.estab_sender.unbounded_send(protocol) {
+                    warn!(target: "shadow-peer", "{}", e);
+                };
                 resp
             }
             None => return,

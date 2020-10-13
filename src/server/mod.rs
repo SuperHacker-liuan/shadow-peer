@@ -9,8 +9,8 @@ use async_std::sync::Arc;
 use async_std::sync::Condvar;
 use async_std::sync::Mutex;
 use async_std::sync::RwLock;
-use async_std::sync::Sender;
 use async_std::task;
+use futures::channel::mpsc::UnboundedSender;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -77,7 +77,7 @@ impl Server {
 }
 
 pub(self) struct Client {
-    estab_sender: Sender<Protocol>,
+    estab_sender: UnboundedSender<Protocol>,
 }
 
 enum ReqStat {
