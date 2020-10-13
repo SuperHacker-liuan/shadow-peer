@@ -1,5 +1,4 @@
 use super::ClientMap;
-use super::ReqCond;
 use super::ReqMap;
 use super::ReqStat;
 use crate::error::err_exit;
@@ -9,14 +8,14 @@ use crate::protocol::net_proto::Establish;
 use crate::protocol::net_proto::TcpEstablish;
 use crate::protocol::ClientId;
 use crate::protocol::Protocol;
+use async_std::future::timeout;
 use async_std::io;
 use async_std::net::TcpListener;
 use async_std::net::TcpStream;
 use async_std::stream::StreamExt;
-use async_std::sync::Arc;
-use async_std::sync::Condvar;
-use async_std::sync::Mutex;
 use async_std::task;
+use futures::channel::oneshot;
+use futures::channel::oneshot::Sender;
 use futures::future::FutureExt;
 use log::warn;
 use std::net::SocketAddr;
@@ -51,34 +50,33 @@ async fn tcp_stream(stream: TcpStream, id: ClientId, cli: &ClientMap, req: &ReqM
     const TMOUT: u64 = 10;
 
     task::spawn(async move {
-        let resp = match { cli.read().await.get(&id) } {
+        let (recv, est) = match { cli.read().await.get(&id) } {
             Some(cli) => {
-                let resp = Arc::new((Mutex::new(None), Condvar::new()));
+                let (send, recv) = oneshot::channel();
                 let protocol = Protocol::Establish(establish.clone());
-                register_on_reqmap(&req, establish, resp.clone()).await;
+                register_on_reqmap(&req, establish.clone(), send).await;
                 if let Err(e) = cli.estab_sender.unbounded_send(protocol) {
                     warn!(target: "shadow-peer", "{}", e);
                 };
-                resp
+                (recv, establish)
             }
             None => return,
         };
 
         // Wait for client connection
-        let (lock, cvar) = &*resp;
-        let lock = lock.lock().await;
-        let timeout = Duration::from_secs(TMOUT);
-        let (cli_stream, _timeout) = cvar
-            .wait_timeout_until(lock, timeout, |cs| cs.is_some())
-            .await;
-        let cli_stream = match *cli_stream {
-            Some(ref cli_stream) => cli_stream,
-            None => return,
+        let cli_stream = match timeout(Duration::from_secs(TMOUT), recv).await {
+            Ok(Ok(stream)) => stream,
+            Ok(Err(_)) => return,
+            Err(_) => {
+                // Timeout
+                req.lock().await.remove(&est);
+                return;
+            }
         };
 
         // Sync
         let (vr, vw) = &mut (&stream, &stream);
-        let (cr, cw) = &mut (cli_stream, cli_stream);
+        let (cr, cw) = &mut (&cli_stream, &cli_stream);
         futures::select! {
             _ = io::copy(vr, cw).fuse() => {}
             _ = io::copy(cr, vw).fuse() => {}
@@ -87,7 +85,7 @@ async fn tcp_stream(stream: TcpStream, id: ClientId, cli: &ClientMap, req: &ReqM
     Ok(())
 }
 
-async fn register_on_reqmap(req: &ReqMap, est: Establish, cond: ReqCond) {
-    let stat = ReqStat::Syn(cond);
+async fn register_on_reqmap(req: &ReqMap, est: Establish, send: Sender<TcpStream>) {
+    let stat = ReqStat::Syn(send);
     req.lock().await.insert(est, stat);
 }

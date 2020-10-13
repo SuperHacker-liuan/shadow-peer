@@ -141,10 +141,7 @@ async fn worker(stream: TcpStream, est: Establish, req: &ReqMap) {
         Some(ReqStat::Syn(stat)) => stat,
         None => return,
     };
-
-    let (lock, cond) = &*stat;
-    *lock.lock().await = Some(stream);
-    cond.notify_one();
+    let _ = stat.send(stream);
 }
 
 async fn write_wrap(s: &mut &TcpStream, proto: &Protocol) -> bool {

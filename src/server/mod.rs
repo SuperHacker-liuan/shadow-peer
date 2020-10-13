@@ -6,11 +6,11 @@ pub use crate::protocol::ClientId;
 use crate::protocol::Protocol;
 use async_std::net::TcpStream;
 use async_std::sync::Arc;
-use async_std::sync::Condvar;
 use async_std::sync::Mutex;
 use async_std::sync::RwLock;
 use async_std::task;
 use futures::channel::mpsc::UnboundedSender;
+use futures::channel::oneshot;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -19,7 +19,7 @@ mod visitor;
 
 pub(self) type ClientMap = Arc<RwLock<HashMap<ClientId, Client>>>;
 type ReqMap = Arc<Mutex<HashMap<Establish, ReqStat>>>;
-type ReqCond = Arc<(Mutex<Option<TcpStream>>, Condvar)>;
+// type ReqCond = Arc<(Mutex<Option<TcpStream>>, Condvar)>;
 
 pub struct Server {
     cli_listen: Vec<CliListen>,
@@ -81,5 +81,5 @@ pub(self) struct Client {
 }
 
 enum ReqStat {
-    Syn(ReqCond),
+    Syn(oneshot::Sender<TcpStream>),
 }
