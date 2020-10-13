@@ -61,7 +61,7 @@ pub(in crate::server) async fn tcp(
 }
 
 struct Controller {
-    stream: TcpStream,
+    stream: Arc<TcpStream>,
     last_recv: u16,
 }
 
@@ -81,7 +81,7 @@ async fn init(share: &StreamShare, stream: StdResult<TcpStream, io::Error>) -> O
             let (send, recv) = sync::channel(1000);
             let client = Client { estab_sender: send };
             let controller = Controller {
-                stream,
+                stream: Arc::new(stream),
                 last_recv: current_time16(),
             };
             share.cli.write().await.insert(id.clone(), client);
@@ -95,9 +95,8 @@ async fn init(share: &StreamShare, stream: StdResult<TcpStream, io::Error>) -> O
 
 async fn controller(mut c: Controller, recv: Receiver<Protocol>) {
     const PING_TMOUT: u64 = 5;
-    let stream = c.stream.clone();
     let mut send_fut = Box::pin(recv.recv().fuse());
-    let mut recv_fut = Box::pin(read_wrap(stream).fuse());
+    let mut recv_fut = Box::pin(read_wrap(c.stream.clone()).fuse());
     let mut ping_timer = Delay::new(Duration::from_secs(PING_TMOUT)).fuse();
     let mut timeout = Delay::new(Duration::from_secs(PING_TMOUT * 2)).fuse();
     loop {
@@ -107,7 +106,7 @@ async fn controller(mut c: Controller, recv: Receiver<Protocol>) {
                     Ok(proto) => proto,
                     Err(_) => return,
                 };
-                if !write_wrap(&mut c.stream, &proto).await {
+                if !write_wrap(&mut &*c.stream, &proto).await {
                     return;
                 }
                 send_fut = Box::pin(recv.recv().fuse());
@@ -118,13 +117,12 @@ async fn controller(mut c: Controller, recv: Receiver<Protocol>) {
                     Err(_) => return,
                 };
                 handle_recv(&mut c, proto);
-                let stream = c.stream.clone();
-                recv_fut = Box::pin(read_wrap(stream).fuse());
+                recv_fut = Box::pin(read_wrap(c.stream.clone()).fuse());
                 timeout = Delay::new(Duration::from_secs(PING_TMOUT * 2)).fuse();
             },
             _ = ping_timer => {
                 let proto = Protocol::Ping(current_time16());
-                if !write_wrap(&mut c.stream, &proto).await {
+                if !write_wrap(&mut &*c.stream, &proto).await {
                     return;
                 }
                 ping_timer = Delay::new(Duration::from_secs(PING_TMOUT)).fuse();
@@ -156,10 +154,11 @@ async fn worker(stream: TcpStream, est: Establish, req: &ReqMap) {
     cond.notify_one();
 }
 
-async fn write_wrap(s: &mut TcpStream, proto: &Protocol) -> bool {
+async fn write_wrap(s: &mut &TcpStream, proto: &Protocol) -> bool {
     write_protocol(s, CURRENT_VERSION, proto).await.is_ok()
 }
 
-async fn read_wrap(mut s: TcpStream) -> Result<Protocol> {
+async fn read_wrap(s: Arc<TcpStream>) -> Result<Protocol> {
+    let mut s = &*s;
     read_protocol(&mut s).await
 }
