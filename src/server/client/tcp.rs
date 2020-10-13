@@ -109,6 +109,7 @@ async fn controller(mut c: Controller, mut recv: UnboundedReceiver<Protocol>) {
                 if !write_wrap(&mut &*c.stream, &proto).await {
                     return;
                 }
+                send_fut = recv.next().fuse();
             },
             recv = recv_fut => {
                 let proto = match recv {
